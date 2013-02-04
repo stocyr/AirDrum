@@ -1,12 +1,11 @@
 ConsoleMotionRecorder
 =====================
 
---
+Air drum with a Leap device
 
 ## Platforms
 
 This should work under Windows, Linux and Mac, though only Windows was tested yet.
-The only platform dependent code is the *getChar* function used in main().
 
 ## Requirements
 
@@ -19,3 +18,4 @@ Alongside with the source file *ConsoleMotionRecorder.py*, the Leap python API (
 
 ## Usage
 
+Start the tool, connect the Leap and make sure the Leap app is running. Moving down a finger fast enough will trigger the MIDI note E4 on MIDI channel 0 with velocity depending on the speed of the finger.
