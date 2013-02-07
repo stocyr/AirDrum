@@ -33,3 +33,7 @@ nosetests.xml
 .mr.developer.cfg
 .project
 .pydevproject
+
+# Software related
+dict_output.txt
+Algorithm-Debug*
