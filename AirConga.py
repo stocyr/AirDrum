@@ -14,18 +14,17 @@ from collections import defaultdict
 import pygame.midi
 
 class CongaListener(Leap.Listener):
-    down_sound = None
-    up_sound = None
     midi_out = None
     
     note_snare = 52
     note_kick = 48
-    velocity = 127
     channel = 0
     
-    VELOCITY_THRESHOLD = -500
+    VELOCITY_THRESHOLD = -600
+    NOTE_HOLD = 40000 # microseconds
     
     fingerdict = {}
+    notes_playing = []
     
     # DEBUG:
     file = None
@@ -49,65 +48,91 @@ class CongaListener(Leap.Listener):
         # Get the most recent frame
         frame = controller.frame()
         
+        # search trough all the pointables:
         if not frame.pointables.empty:
             # DEBUG:
             self.file.write("%f\t%d" % ((frame.timestamp - controller.frame(1).timestamp)/1000000.0, frame.id))
-                             
             for pointable in frame.pointables:
-                if pointable.id in self.fingerdict:
-                    # is this finger supervised already?
-                    # keep track of the maximum (negative) velocity
-                    self.fingerdict[pointable.id]['max_velocity'] = min(pointable.tip_velocity.y, self.fingerdict[pointable.id]['max_velocity'])
-                    # calculate acceleration a = dv/dt = (v_new-v_old)/((t_new-t_old)/1000000us/s)
-                    self.fingerdict[pointable.id]['acceleration'] = (pointable.tip_velocity.y - self.fingerdict[pointable.id]['old_velocity'])*1000000/(frame.timestamp - self.fingerdict[pointable.id]['old_timestamp'])
-                    
-                    
-                    if 'note_on' not in self.fingerdict[pointable.id]:
-                        # check if acceleration got positive again:
-                        if self.fingerdict[pointable.id]['acceleration'] > 0:
-                            # play sound according to position
-                            if pointable.tip_position.x > 0:
-                                # if it's on the right, play kick
-                                self.fingerdict[pointable.id]['note_on'] = self.note_kick
-                                # DEBUG:
-                                self.file.write("\tKick on")
-                            else:
-                                self.fingerdict[pointable.id]['note_on'] = self.note_snare
-                                # DEBUG:
-                                self.file.write("\tSnare on")
-                            velocity = -self.fingerdict[pointable.id]['max_velocity'] - 400.0   # start from around zero
-                            velocity = max(0, velocity)                                         # hard limit to > 1
-                            if pointable.is_tool:                                               # scale down to about 0-1
-                                velocity = velocity / 6000.0                                    # if it's a tool, greater velocities can be achieved -> scale it more
-                            else:
-                                velocity = velocity / 4000.0                                    # if it's a finger, don't scale it as much as a tool
-                            velocity = min(velocity, 1.0)                                       # hard limit to 0 < velocity < 1
-                            velocity = math.pow(velocity, 0.4)                                  # it feels as if it's a bit exponential -> calculate that out
-                            velocity = velocity * 126.0 + 1.0                                   # scale up again to 1 - 127
-                            
-                            self.midi_out.note_on(self.fingerdict[pointable.id]['note_on'], int(velocity), self.channel)
-                            print "%d\t%s on with velocity: %.2f -> %d" % (frame.timestamp, ("snare" if self.fingerdict[pointable.id]['note_on'] == self.note_snare else "kick"), self.fingerdict[pointable.id]['max_velocity'], velocity)
-                        
-                        # store history values (i know, it may be more elegant with frame(1), but there i have to search for the finger ID again...)
-                        self.fingerdict[pointable.id]['old_timestamp'] = frame.timestamp
-                        self.fingerdict[pointable.id]['old_velocity'] = pointable.tip_velocity.y
-                    elif pointable.tip_velocity.y > self.VELOCITY_THRESHOLD:
-                        # if the note was already played and now the velocity has decreased enough, clear finger id
-                        self.midi_out.note_off(self.fingerdict[pointable.id]['note_on'], 0, self.channel)
-                        print "%d\t%s off " % (frame.timestamp, ("snare" if self.fingerdict[pointable.id]['note_on'] == self.note_snare else "kick"))
-                        del self.fingerdict[pointable.id]
-                        # DEBUG:
-                        self.file.write("\toff")
-                elif pointable.tip_velocity.y < self.VELOCITY_THRESHOLD:
+                # does anyone excess the velocity threshold and isn't on the list already? (WARNING: since velocity is negative, < is used!)
+                if pointable.tip_velocity.y < self.VELOCITY_THRESHOLD and pointable.id not in self.fingerdict:
+                    # add it to supervisor list.
                     self.fingerdict[pointable.id] = defaultdict(dict)
-                    self.fingerdict[pointable.id]['old_velocity'] = pointable.tip_velocity.y
-                    self.fingerdict[pointable.id]['old_timestamp'] = frame.timestamp
-                    self.fingerdict[pointable.id]['max_velocity'] = pointable.tip_velocity.y
-                    self.fingerdict[pointable.id]['acceleration'] = 0
             
+        # process the existing IDs in list
+        del_array = []
+        for hit_id in self.fingerdict:
+            hit = self.fingerdict[hit_id]
+            # already played?
+            if 'note' in hit:
+                # hold the note for a certain time, then kill it
+                if frame.timestamp - hit['timestamp'] > self.NOTE_HOLD:
+                    # DEBUG:
+                    print "\t%s off " % ("snare" if hit['note'] == self.note_snare else "kick")
+                    self.midi_out.note_off(hit['note'], 0, self.channel)
+                    self.notes_playing.remove(hit['note'])
+                    del_array.append(hit_id)
+            # not played yet:
+            else:
+                pointable = frame.pointable(hit_id)
+                pointable_old = controller.frame(1).pointable(hit_id)
+                # finger ID even visible yet?
+                if pointable.is_valid:
+                    # check for maximum velocity (WARNING: since velocity is negative, "min" is used!)
+                    hit['max_velocity'] = min(hit['max_velocity'], pointable.tip_velocity.y) if 'max_velocity' in hit else pointable.tip_velocity.y
+                    # detect whether the hit should play already: has the negative velocity decreased? (WARNING: since velocity is negative, > is used!)
+                    if pointable_old.is_valid and pointable.tip_velocity.y > pointable_old.tip_velocity.y:
+                        # determine which note to play
+                        # if it's on the right, play kick
+                        if pointable.tip_position.x > 0:
+                            hit['note'] = self.note_kick
+                        else:
+                            hit['note'] = self.note_snare
+                        
+                        # check if the note may be playing yet
+                        if hit['note'] in self.notes_playing:
+                            # if already playing: delete hit!
+                            del_array.append(hit_id)
+                        else:
+                            self.play_sound(pointable, hit)
+                # finger not visible anymore
+                else:
+                    # then just delete it.
+                    del_array.append(hit_id)
+            
+        # delete dead dictionary items
+        for hit_id in del_array:
+            del self.fingerdict[hit_id]
+        
+        if not frame.pointables.empty:
             # DEBUG:
             self.file.write("\t%s\n" % self.fingerdict)
-            
+        
+    
+    def play_sound(self, pointable, hit):
+        # safe timestamp
+        hit['timestamp'] = pointable.frame.timestamp
+        
+        # DEBUG:
+        self.file.write("\tKick on" if hit['note'] == self.note_kick else "\tSnare on")
+        
+        # calculate velocity
+        velocity = - hit['max_velocity'] - 500.0     # start from around zero
+        if pointable.is_tool:
+            velocity = velocity / 6000.0            # if it's a tool, greater velocities can be achieved -> scale it more
+        else:
+            velocity = velocity / 4000.0            # if it's a finger, don't scale it as much as a tool
+        velocity = min(velocity, 1.0)               # hard limit to 0 < velocity < 1
+        velocity = max(0.0, velocity)
+        velocity = math.pow(velocity, 0.4)          # it feels as if it's a bit exponential -> calculate that out
+        velocity = velocity * 126.0 + 1.0           # scale up again to 1 - 127
+        
+        # play note on midi out
+        self.midi_out.note_on(hit['note'], int(velocity), self.channel)
+        # DEBUG:
+        print "\t%s on with velocity: %.2f -> %d" % (("snare" if hit['note'] == self.note_snare else "kick"), hit['max_velocity'], velocity)
+        
+        # register note in array:
+        self.notes_playing.append(hit['note'])
 
     def set_midi_device(self):
         c = pygame.midi.get_count()
@@ -122,17 +147,17 @@ class CongaListener(Leap.Listener):
         print 'Default is %s' % pygame.midi.get_device_info(pygame.midi.get_default_output_id())[1]
         
         if id_device_from_settings <> -1:
-            self.midi_device = id_device_from_settings
+            midi_device_id = id_device_from_settings
             print 'MIDI device "%s" found. Connecting.' % pygame.midi.get_device_info(id_device_from_settings)[1]
         else:
             # if it was not in the list, take the default one
-            self.midi_device = pygame.midi.get_default_output_id()
+            midi_device_id = pygame.midi.get_default_output_id()
             print 'Warning: No MIDI device named "%s" found. Choosing the system default ("%s").' % ("Fast Track Pro MIDI Out", pygame.midi.get_device_info(self.midi_device)[1])
         
-        if pygame.midi.get_device_info(self.midi_device)[4] == 1:
+        if pygame.midi.get_device_info(midi_device_id)[4] == 1:
             print 'Error: Can''t open the MIDI device - It''s already opened!'
             
-        self.midi_out = pygame.midi.Output(self.midi_device)
+        self.midi_out = pygame.midi.Output(midi_device_id)
 
 
 def main():
@@ -150,6 +175,10 @@ def main():
     
     # DEBUG:
     listener.file.close()
+    
+    # close MIDI socket
+    listener.midi_out.close()
+    pygame.midi.quit()
 
     # app closes: Remove the listener
     controller.remove_listener(listener)
