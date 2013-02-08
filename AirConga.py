@@ -13,6 +13,9 @@ import Leap, sys, math
 from collections import defaultdict
 import pygame.midi
 
+def mid_position(VectorA, VectorB):
+    return VectorA + (VectorB - VectorA) / 2
+
 class CongaListener(Leap.Listener):
     midi_out = None
     
@@ -57,6 +60,8 @@ class CongaListener(Leap.Listener):
                 if pointable.tip_velocity.y < self.VELOCITY_THRESHOLD and pointable.id not in self.fingerdict:
                     # add it to supervisor list.
                     self.fingerdict[pointable.id] = defaultdict(dict)
+                    # store the actual position to determine the hit position on the XZ-plane
+                    self.fingerdict[pointable.id]['PosA'] = pointable.tip_position
             
         # process the existing IDs in list
         del_array = []
@@ -92,6 +97,10 @@ class CongaListener(Leap.Listener):
                             # if already playing: delete hit!
                             del_array.append(hit_id)
                         else:
+                            # store the position to determine the hit position on the XZ-plane
+                            hit['PosB'] = pointable.tip_position
+                            hit['Pos'] = mid_position(hit['PosA'], hit['PosB'])
+                            # play the actual sound
                             self.play_sound(pointable, hit)
                 # finger not visible anymore
                 else:
@@ -172,11 +181,12 @@ def main():
     print "Exiting..."
     
     # DEBUG:
-    listener.file.close()
+    if listener.file != None:
+        listener.file.close()
     
     # close MIDI socket
-    listener.midi_out.close()
-    pygame.midi.quit()
+    #listener.midi_out.close()
+    #pygame.midi.quit()
 
     # app closes: Remove the listener
     controller.remove_listener(listener)
