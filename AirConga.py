@@ -77,12 +77,11 @@ class CongaListener(Leap.Listener):
                 pointable_old = controller.frame(1).pointable(hit_id)
                 # finger ID even visible yet?
                 if pointable.is_valid:
-                    # check for maximum velocity (WARNING: since velocity is negative, "min" is used!)
-                    hit['max_velocity'] = min(hit['max_velocity'], pointable.tip_velocity.y) if 'max_velocity' in hit else pointable.tip_velocity.y
                     # detect whether the hit should play already: has the negative velocity decreased? (WARNING: since velocity is negative, > is used!)
                     if pointable_old.is_valid and pointable.tip_velocity.y > pointable_old.tip_velocity.y:
-                        # determine which note to play
-                        # if it's on the right, play kick
+                        # determine the volume of the note: since the pointable has reached its lowermost point, the last point was the lowest one.
+                        hit['velocity'] = pointable_old.tip_velocity.y
+                        # determine which note to play: if it's on the right, play kick
                         if pointable.tip_position.x > 0:
                             hit['note'] = self.note_kick
                         else:
@@ -103,9 +102,8 @@ class CongaListener(Leap.Listener):
         for hit_id in del_array:
             del self.fingerdict[hit_id]
         
-        if not frame.pointables.empty:
-            # DEBUG:
-            self.file.write("\t%s\n" % self.fingerdict)
+        # DEBUG:
+        if not frame.pointables.empty: self.file.write("\t%s\n" % self.fingerdict)
         
     
     def play_sound(self, pointable, hit):
@@ -116,7 +114,7 @@ class CongaListener(Leap.Listener):
         self.file.write("\tKick on" if hit['note'] == self.note_kick else "\tSnare on")
         
         # calculate velocity
-        velocity = - hit['max_velocity'] - 500.0     # start from around zero
+        velocity = - hit['velocity'] - 500.0     # start from around zero
         if pointable.is_tool:
             velocity = velocity / 6000.0            # if it's a tool, greater velocities can be achieved -> scale it more
         else:
@@ -129,7 +127,7 @@ class CongaListener(Leap.Listener):
         # play note on midi out
         self.midi_out.note_on(hit['note'], int(velocity), self.channel)
         # DEBUG:
-        print "\t%s on with velocity: %.2f -> %d" % (("snare" if hit['note'] == self.note_snare else "kick"), hit['max_velocity'], velocity)
+        print "\t%s on with velocity: %.2f -> %d" % (("snare" if hit['note'] == self.note_snare else "kick"), hit['velocity'], velocity)
         
         # register note in array:
         self.notes_playing.append(hit['note'])
