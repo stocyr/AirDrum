@@ -31,16 +31,9 @@ class DrumListener(Leap.Listener):
     fingerdict = {}
     notes_playing = []
     sounds = {}
-    
-    # DEBUG:
-    file = None
 
     def on_init(self, controller):
         print "Initialized\n"
-
-    def on_connect(self, controller):
-        # DEBUG:
-        self.file = open("dict_output.txt", 'w')
 
     def on_frame(self, controller):
         # Get the most recent frame
@@ -48,8 +41,6 @@ class DrumListener(Leap.Listener):
         
         # search trough all the pointables:
         if not frame.pointables.empty and self.play_midi != None:
-            # DEBUG:
-            self.file.write("%f\t%d" % ((frame.timestamp - controller.frame(1).timestamp)/1000000.0, frame.id))
             for pointable in frame.pointables:
                 # does anyone excess the velocity threshold and isn't on the list already? (WARNING: since velocity is negative, < is used!)
                 if pointable.tip_velocity.y < self.VELOCITY_THRESHOLD and pointable.id not in self.fingerdict:
@@ -108,16 +99,10 @@ class DrumListener(Leap.Listener):
         for hit_id in del_array:
             del self.fingerdict[hit_id]
         
-        # DEBUG:
-        if not frame.pointables.empty: self.file.write("\t%s\n" % self.fingerdict)
-        
     
     def play_sound(self, pointable, hit):
         # safe timestamp
         hit['timestamp'] = pointable.frame.timestamp
-        
-        # DEBUG:
-        self.file.write("\tKick on" if hit['note'] == self.note_kick else "\tSnare on")
         
         # calculate velocity
         velocity = - hit['velocity'] - 500.0        # start from around zero
@@ -229,10 +214,6 @@ def main():
     sys.stdin.readline()
     
     print "Exiting..."
-    
-    # DEBUG:
-    if listener.file != None:
-        listener.file.close()
     
     # close MIDI socket
     #listener.midi_out.close()
