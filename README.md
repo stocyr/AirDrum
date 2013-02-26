@@ -23,14 +23,16 @@ Leap Motion device and Leap app v0.7.3 or higher.
 Alongside with the source file *AirDrum.py*, the Leap python API (again SDK v0.7.3 or higher) should be provided in the same directory:
 A copy of the following three files are available when you checkout, AirDrum.
 * *Leap.py*
-* *_LeapPython.pyd*
+* *_LeapPython.pyd (no underscore( _ ) from v0.7.4 onwards)*
 * *Leap.dll*
 
 It is preferred to replace these three files from your local LeapSDK installation folder.
 
 * *\Leap_Developer_Kit_\<v0.7.3 or higher\>_\<OS\>\Leap_SDK\lib\Leap.py*
-* *\Leap_Developer_Kit_\<v0.7.3 or higher\>_\<OS\>\Leap_SDK\lib\x86\\_LeapPython.pyd*
 * *\Leap_Developer_Kit_\<v0.7.3 or higher\>_\<OS\>\Leap_SDK\lib\x86\Leap.dll*
+* *\Leap_Developer_Kit_\<v0.7.3 and lower\>_\<OS\>\Leap_SDK\lib\x86\\_LeapPython.pyd*
+* *OR*
+* *\Leap_Developer_Kit_\<v0.7.4 or higher\>_\<OS\>\Leap_SDK\lib\x86\\LeapPython.pyd*
 
 
 If no Midi output is used, there have to be four audio files in the same directory as well:
