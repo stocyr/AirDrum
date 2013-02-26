@@ -71,7 +71,7 @@ class DrumListener(Leap.Listener):
                 # finger ID even visible yet?
                 if pointable.is_valid:
                     # detect whether the hit should play already: has the negative velocity decreased? (WARNING: since velocity is negative, > is used!)
-                    if pointable_old.is_valid and pointable.tip_velocity.y > pointable_old.tip_velocity.y:
+                    if pointable_old.is_valid and pointable.tip_velocity.y - pointable_old.tip_velocity.y > -self.VELOCITY_THRESHOLD / 3:
                         # determine the volume of the note: since the pointable has reached its lowermost point, the last point was the lowest one.
                         hit['velocity'] = pointable_old.tip_velocity.y
                         # determine which note to play: if it's on the right, play kick
